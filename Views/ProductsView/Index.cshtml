@@ -1,0 +1,278 @@
+﻿@{
+    ViewData["Title"] = "產品管理";
+    bool isAdmin = User.IsInRole("Admin");
+}
+
+<meta name="csrf-token" content="@ViewData["CsrfToken"]" />
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>產品管理</h2>
+    <button class="btn btn-primary" onclick="openCreateModal()">
+        <i class="bi bi-plus-lg"></i> 新增產品
+    </button>
+</div>
+
+<div id="message"></div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>產品名稱</th>
+                        <th>SKU</th>
+                        <th>分類</th>
+                        <th>供應商</th>
+                        <th>單價</th>
+                        <th>庫存</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="productTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 新增／修改 Modal -->
+<div class="modal fade" id="productModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">產品資料</h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="productForm">
+                    <input type="hidden" id="productId" />
+
+                    <div class="mb-3">
+                        <label class="form-label">產品名稱</label>
+                        <input id="name" class="form-control" required maxlength="100" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">SKU</label>
+                        <input id="sku" class="form-control" required maxlength="50" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">單價</label>
+                        <input type="number"
+                               id="price"
+                               class="form-control"
+                               min="0"
+                               max="9999999999999999.99"
+                               step="0.01"
+                               required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">庫存數量</label>
+                        <input type="number"
+                               id="stockQuantity"
+                               class="form-control"
+                               min="0"
+                               max="2147483647"
+                               step="1"
+                               required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">產品分類</label>
+                        <select id="categoryId" class="form-select" required></select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">供應商</label>
+                        <select id="supplierId" class="form-select" required></select>
+                    </div>
+                </form>
+
+                <div id="modalError" class="text-danger"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">
+                    取消
+                </button>
+                <button class="btn btn-primary" onclick="saveProduct()">
+                    儲存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const isAdmin = @isAdmin.ToString().ToLowerInvariant();
+        const modal = new bootstrap.Modal(
+            document.getElementById("productModal"));
+
+        let products = [];
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            await loadCategories();
+            await loadSuppliers();
+            await loadProducts();
+        });
+
+        async function loadProducts() {
+            try {
+                const response = await apiFetch("/api/products");
+                if (!response.ok) throw new Error("無法載入產品資料。");
+
+                products = await response.json();
+
+                document.getElementById("productTable").innerHTML =
+                    products.map(p => `
+                            <tr>
+                                <td>${p.id}</td>
+                                <td>${escapeHtml(p.name)}</td>
+                                <td>${escapeHtml(p.sku)}</td>
+                                <td>${escapeHtml(p.categoryName)}</td>
+                                <td>${escapeHtml(p.supplierName)}</td>
+                                <td>${Number(p.price).toLocaleString()}</td>
+                                <td>${p.stockQuantity}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            onclick="editProduct(${p.id})">
+                                        編輯
+                                    </button>
+                                    ${isAdmin ? `
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            onclick="deleteProduct(${p.id})">
+                                        刪除
+                                    </button>` : ""}
+                                </td>
+                            </tr>
+                        `).join("");
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        async function loadCategories() {
+            const response = await apiFetch("/api/categories");
+            if (!response.ok) throw new Error("無法載入分類。");
+
+            const categories = await response.json();
+
+            document.getElementById("categoryId").innerHTML =
+                categories.map(c =>
+                    `<option value="${c.id}">${escapeHtml(c.name)}</option>`
+                ).join("");
+        }
+
+        async function loadSuppliers() {
+            const response = await apiFetch("/api/suppliers");
+            if (!response.ok) throw new Error("無法載入供應商。");
+
+            const suppliers = await response.json();
+
+            document.getElementById("supplierId").innerHTML =
+                suppliers.map(s =>
+                    `<option value="${s.id}">${escapeHtml(s.name)}</option>`
+                ).join("");
+        }
+
+        function openCreateModal() {
+            document.getElementById("productForm").reset();
+            document.getElementById("productId").value = "";
+            document.getElementById("modalTitle").textContent = "新增產品";
+            document.getElementById("modalError").textContent = "";
+            modal.show();
+        }
+
+        function editProduct(id) {
+            const p = products.find(x => x.id === id);
+            if (!p) return;
+
+            document.getElementById("productId").value = p.id;
+            document.getElementById("name").value = p.name;
+            document.getElementById("sku").value = p.sku;
+            document.getElementById("price").value = p.price;
+            document.getElementById("stockQuantity").value = p.stockQuantity;
+            document.getElementById("categoryId").value = p.categoryId;
+            document.getElementById("supplierId").value = p.supplierId;
+            document.getElementById("modalTitle").textContent = "修改產品";
+            document.getElementById("modalError").textContent = "";
+            modal.show();
+        }
+
+        async function saveProduct() {
+            const form = document.getElementById("productForm");
+            if (!form.reportValidity()) return;
+
+            const id = document.getElementById("productId").value;
+
+            const data = {
+                name: document.getElementById("name").value,
+                sku: document.getElementById("sku").value,
+                price: Number(document.getElementById("price").value),
+                stockQuantity: Number(
+                    document.getElementById("stockQuantity").value),
+                categoryId: Number(document.getElementById("categoryId").value),
+                supplierId: Number(document.getElementById("supplierId").value)
+            };
+
+            try {
+                const response = await apiFetch(
+                    id ? `/api/products/${id}` : "/api/products",
+                    {
+                        method: id ? "PUT" : "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data)
+                    }
+                );
+
+                if (!response.ok) {
+                    const errorMessage = await getErrorMessage(response);
+                    throw new Error(errorMessage);
+                }
+
+                modal.hide();
+                showMessage("產品資料已儲存。", "success");
+                await loadProducts();
+            } catch (error) {
+                document.getElementById("modalError").textContent =
+                    error.message;
+            }
+        }
+
+        async function deleteProduct(id) {
+            if (!confirm("確定要刪除此產品嗎？")) return;
+
+            try {
+                const response = await apiFetch(`/api/products/${id}`, {
+                    method: "DELETE"
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error || "刪除失敗。");
+                }
+
+                showMessage("產品已刪除。", "success");
+                await loadProducts();
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function showMessage(message, type) {
+            const element = document.getElementById("message");
+            element.replaceChildren();
+
+            const alert = document.createElement("div");
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            element.appendChild(alert);
+        }
+    </script>
+}

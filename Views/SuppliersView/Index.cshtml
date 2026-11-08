@@ -1,0 +1,250 @@
+﻿@{
+    ViewData["Title"] = "供應商管理";
+    bool isAdmin = User.IsInRole("Admin");
+}
+
+<meta name="csrf-token" content="@ViewData["CsrfToken"]" />
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>供應商管理</h2>
+    <button class="btn btn-primary" onclick="openCreateModal()">
+        <i class="bi bi-plus-lg"></i> 新增供應商
+    </button>
+</div>
+
+<div id="message"></div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>供應商名稱</th>
+                        <th>聯絡人</th>
+                        <th>Email</th>
+                        <th>電話</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="supplierTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 新增／修改供應商 Modal -->
+<div class="modal fade" id="supplierModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">供應商資料</h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="supplierForm">
+                    <input type="hidden" id="supplierId" />
+
+                    <div class="mb-3">
+                        <label class="form-label">供應商名稱</label>
+                        <input id="name" class="form-control"
+                               required maxlength="100" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">聯絡人</label>
+                        <input id="contactPerson" class="form-control"
+                               maxlength="100" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input id="email" type="email"
+                               class="form-control" maxlength="100" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">電話</label>
+                        <input id="phone" class="form-control"
+                               maxlength="30" />
+                    </div>
+                </form>
+
+                <div id="modalError" class="text-danger"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    取消
+                </button>
+                <button class="btn btn-primary"
+                        onclick="saveSupplier()">
+                    儲存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const isAdmin = @isAdmin.ToString().ToLowerInvariant();
+
+        const modal = new bootstrap.Modal(
+            document.getElementById("supplierModal"));
+
+        let suppliers = [];
+
+        document.addEventListener("DOMContentLoaded", loadSuppliers);
+
+        async function loadSuppliers() {
+            try {
+                const response = await apiFetch("/api/suppliers");
+
+                if (!response.ok)
+                    throw new Error("無法載入供應商資料。");
+
+                suppliers = await response.json();
+
+                const table = document.getElementById("supplierTable");
+
+                if (suppliers.length === 0) {
+                    table.innerHTML = `
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    目前沒有供應商資料
+                                </td>
+                            </tr>`;
+                    return;
+                }
+
+                table.innerHTML = suppliers.map(s => `
+                        <tr>
+                            <td>${s.id}</td>
+                            <td>${escapeHtml(s.name)}</td>
+                            <td>${escapeHtml(s.contactPerson)}</td>
+                            <td>${escapeHtml(s.email)}</td>
+                            <td>${escapeHtml(s.phone)}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        onclick="editSupplier(${s.id})">
+                                    編輯
+                                </button>
+
+                                ${isAdmin ? `
+                                <button class="btn btn-sm btn-outline-danger"
+                                        onclick="deleteSupplier(${s.id})">
+                                    刪除
+                                </button>` : ""}
+                            </td>
+                        </tr>
+                    `).join("");
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function openCreateModal() {
+            document.getElementById("supplierForm").reset();
+            document.getElementById("supplierId").value = "";
+            document.getElementById("modalTitle").textContent = "新增供應商";
+            document.getElementById("modalError").textContent = "";
+            modal.show();
+        }
+
+        function editSupplier(id) {
+            const s = suppliers.find(x => x.id === id);
+            if (!s) return;
+
+            document.getElementById("supplierId").value = s.id;
+            document.getElementById("name").value = s.name;
+            document.getElementById("contactPerson").value =
+                s.contactPerson ?? "";
+            document.getElementById("email").value = s.email ?? "";
+            document.getElementById("phone").value = s.phone ?? "";
+
+            document.getElementById("modalTitle").textContent = "修改供應商";
+            document.getElementById("modalError").textContent = "";
+
+            modal.show();
+        }
+
+        async function saveSupplier() {
+            const form = document.getElementById("supplierForm");
+            if (!form.reportValidity()) return;
+
+            const id = document.getElementById("supplierId").value;
+
+            const data = {
+                name: document.getElementById("name").value.trim(),
+                contactPerson:
+                    document.getElementById("contactPerson").value.trim() || null,
+                email:
+                    document.getElementById("email").value.trim() || null,
+                phone:
+                    document.getElementById("phone").value.trim() || null
+            };
+
+            try {
+                const response = await apiFetch(
+                    id ? `/api/suppliers/${id}` : "/api/suppliers",
+                    {
+                        method: id ? "PUT" : "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data)
+                    }
+                );
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error || "儲存失敗。");
+                }
+
+                modal.hide();
+                showMessage("供應商資料已儲存。", "success");
+                await loadSuppliers();
+
+            } catch (error) {
+                document.getElementById("modalError").textContent =
+                    error.message;
+            }
+        }
+
+        async function deleteSupplier(id) {
+            if (!confirm("確定要刪除此供應商嗎？")) return;
+
+            try {
+                const response = await apiFetch(
+                    `/api/suppliers/${id}`,
+                    { method: "DELETE" }
+                );
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error || "刪除失敗。");
+                }
+
+                showMessage("供應商已刪除。", "success");
+                await loadSuppliers();
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function showMessage(message, type) {
+            const element = document.getElementById("message");
+            element.replaceChildren();
+
+            const alert = document.createElement("div");
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            element.appendChild(alert);
+        }
+    </script>
+}

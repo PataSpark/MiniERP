@@ -1,0 +1,343 @@
+﻿@{
+    ViewData["Title"] = "使用者管理";
+}
+
+<meta name="csrf-token" content="@ViewData["CsrfToken"]" />
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>使用者管理</h2>
+
+    <button class="btn btn-primary" onclick="openCreateModal()">
+        <i class="bi bi-person-plus"></i> 新增使用者
+    </button>
+</div>
+
+<div id="message"></div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>姓名</th>
+                        <th>角色</th>
+                        <th>狀態</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="userTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 新增使用者 Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">新增使用者</h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="createForm">
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input id="email" type="email"
+                               class="form-control" required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">姓名</label>
+                        <input id="fullName" class="form-control"
+                               maxlength="100" required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">密碼</label>
+                        <input id="password" type="password"
+                               class="form-control" minlength="8"
+                               autocomplete="new-password" required />
+
+                        <div class="form-text">
+                            至少 8 個字元，包含大小寫英文字母、數字與特殊符號。
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">角色</label>
+                        <select id="role" class="form-select">
+                            <option value="Staff">Staff</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                </form>
+
+                <div id="createError" class="text-danger"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    取消
+                </button>
+
+                <button class="btn btn-primary" id="createButton"
+                        onclick="createUser()">
+                    建立帳號
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- 修改角色 Modal -->
+<div class="modal fade" id="roleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">修改使用者角色</h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="editUserId" />
+
+                <p id="editUserEmail" class="text-muted"></p>
+
+                <label class="form-label">角色</label>
+                <select id="editRole" class="form-select">
+                    <option value="Staff">Staff</option>
+                    <option value="Admin">Admin</option>
+                </select>
+
+                <div id="roleError" class="text-danger mt-2"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    取消
+                </button>
+
+                <button class="btn btn-primary"
+                        onclick="saveRole()">
+                    儲存角色
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const createModal = new bootstrap.Modal(
+            document.getElementById("createModal"));
+
+        const roleModal = new bootstrap.Modal(
+            document.getElementById("roleModal"));
+
+        let users = [];
+
+        document.addEventListener("DOMContentLoaded", loadUsers);
+
+        async function loadUsers() {
+            try {
+                const response = await apiFetch("/api/users");
+
+                if (!response.ok)
+                    throw new Error("無法載入使用者資料。");
+
+                users = await response.json();
+
+                const table = document.getElementById("userTable");
+
+                if (users.length === 0) {
+                    table.innerHTML = `
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    目前沒有使用者
+                                </td>
+                            </tr>`;
+                    return;
+                }
+
+                table.innerHTML = users.map(u => `
+                        <tr>
+                            <td>${escapeHtml(u.email)}</td>
+                            <td>${escapeHtml(u.fullName)}</td>
+                            <td>
+                                ${u.roles.map(r => `
+                                    <span class="badge bg-primary">
+                                        ${escapeHtml(r)}
+                                    </span>
+                                `).join("")}
+                            </td>
+                            <td>
+                                <span class="badge ${u.isLocked ? "bg-danger" : "bg-success"}">
+                                    ${u.isLocked ? "已停用" : "正常"}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        onclick="openRoleModal('${u.id}')">
+                                    修改角色
+                                </button>
+
+                                ${u.isLocked ? `
+                                    <button class="btn btn-sm btn-outline-success"
+                                            onclick="unlockUser('${u.id}')">
+                                        啟用
+                                    </button>
+                                ` : `
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            onclick="lockUser('${u.id}')">
+                                        停用
+                                    </button>
+                                `}
+                            </td>
+                        </tr>
+                    `).join("");
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function openCreateModal() {
+            document.getElementById("createForm").reset();
+            document.getElementById("createError").textContent = "";
+            createModal.show();
+        }
+
+        async function createUser() {
+            const form = document.getElementById("createForm");
+
+            if (!form.reportValidity())
+                return;
+
+            const data = {
+                email: document.getElementById("email").value.trim(),
+                fullName: document.getElementById("fullName").value.trim(),
+                password: document.getElementById("password").value,
+                role: document.getElementById("role").value
+            };
+
+            const button = document.getElementById("createButton");
+            button.disabled = true;
+
+            try {
+                const response = await apiFetch("/api/users", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok)
+                    throw new Error(await getErrorMessage(response));
+
+                createModal.hide();
+                showMessage("使用者已建立。", "success");
+                await loadUsers();
+
+            } catch (error) {
+                document.getElementById("createError").textContent =
+                    error.message;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function openRoleModal(id) {
+            const user = users.find(u => u.id === id);
+            if (!user) return;
+
+            document.getElementById("editUserId").value = user.id;
+            document.getElementById("editUserEmail").textContent =
+                user.email;
+            document.getElementById("editRole").value =
+                user.roles[0] || "Staff";
+            document.getElementById("roleError").textContent = "";
+
+            roleModal.show();
+        }
+
+        async function saveRole() {
+            const id = document.getElementById("editUserId").value;
+            const role = document.getElementById("editRole").value;
+
+            try {
+                const response = await apiFetch(
+                    `/api/users/${encodeURIComponent(id)}/role`,
+                    {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ role })
+                    }
+                );
+
+                if (!response.ok)
+                    throw new Error(await getErrorMessage(response));
+
+                roleModal.hide();
+                showMessage("使用者角色已更新。", "success");
+                await loadUsers();
+
+            } catch (error) {
+                document.getElementById("roleError").textContent =
+                    error.message;
+            }
+        }
+
+        async function lockUser(id) {
+            if (!confirm("確定要停用此使用者嗎？"))
+                return;
+
+            await changeLockStatus(id, "lock", "使用者已停用。");
+        }
+
+        async function unlockUser(id) {
+            if (!confirm("確定要啟用此使用者嗎？"))
+                return;
+
+            await changeLockStatus(id, "unlock", "使用者已啟用。");
+        }
+
+        async function changeLockStatus(id, action, successMessage) {
+            try {
+                const response = await apiFetch(
+                    `/api/users/${encodeURIComponent(id)}/${action}`,
+                    { method: "PUT" }
+                );
+
+                if (!response.ok)
+                    throw new Error(await getErrorMessage(response));
+
+                showMessage(successMessage, "success");
+                await loadUsers();
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function showMessage(message, type) {
+            const element = document.getElementById("message");
+            element.replaceChildren();
+
+            const alert = document.createElement("div");
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            element.appendChild(alert);
+        }
+    </script>
+}

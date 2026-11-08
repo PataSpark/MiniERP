@@ -1,0 +1,514 @@
+﻿@{
+    ViewData["Title"] = "採購單管理";
+    bool isAdmin = User.IsInRole("Admin");
+}
+
+<meta name="csrf-token" content="@ViewData["CsrfToken"]" />
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>採購單管理</h2>
+    <button class="btn btn-primary" onclick="openCreateModal()">
+        <i class="bi bi-plus-lg"></i> 新增採購單
+    </button>
+</div>
+
+<div id="message"></div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>採購單編號</th>
+                        <th>日期</th>
+                        <th>供應商</th>
+                        <th>狀態</th>
+                        <th>品項數</th>
+                        <th>總金額</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="orderTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 採購單新增／修改 Modal -->
+<div class="modal fade" id="orderModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">
+                    採購單資料
+                </h5>
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="orderForm">
+                    <input type="hidden" id="orderId" />
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">供應商</label>
+                            <select id="supplierId"
+                                    class="form-select"
+                                    required
+                                    onchange="onSupplierChanged()">
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">採購單狀態</label>
+                            <select id="status" class="form-select">
+                                <option value="Pending">待處理</option>
+                                <option value="Approved">已核准</option>
+                                <option value="Cancelled">已取消</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <h5 class="mt-4 mb-3">採購明細</h5>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:35%">產品</th>
+                                    <th style="width:15%">數量</th>
+                                    <th style="width:20%">單價</th>
+                                    <th style="width:20%">小計</th>
+                                    <th style="width:10%">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemTable"></tbody>
+                        </table>
+                    </div>
+
+                    <button type="button"
+                            class="btn btn-outline-primary btn-sm"
+                            onclick="addItemRow()">
+                        <i class="bi bi-plus"></i> 新增明細
+                    </button>
+
+                    <div class="text-end mt-4">
+                        <h4>
+                            採購總額：
+                            <span id="totalAmount">0.00</span>
+                        </h4>
+                    </div>
+                </form>
+
+                <div id="modalError"
+                     class="text-danger mt-3"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    取消
+                </button>
+
+                <button class="btn btn-primary"
+                        id="saveButton"
+                        onclick="saveOrder()">
+                    儲存採購單
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const isAdmin = @isAdmin.ToString().ToLowerInvariant();
+
+        const modal = new bootstrap.Modal(
+            document.getElementById("orderModal"));
+
+        let orders = [];
+        let suppliers = [];
+        let products = [];
+        let nextRowId = 0;
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            try {
+                await Promise.all([
+                    loadSuppliers(),
+                    loadProducts()
+                ]);
+
+                await loadOrders();
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        });
+
+        function formatMoney(value) {
+            return Number(value).toLocaleString("zh-TW", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+
+        async function loadSuppliers() {
+            const response = await apiFetch("/api/suppliers");
+
+            if (!response.ok)
+                throw new Error("無法載入供應商資料。");
+
+            suppliers = await response.json();
+
+            document.getElementById("supplierId").innerHTML =
+                suppliers.map(s => `
+                        <option value="${s.id}">
+                            ${escapeHtml(s.name)}
+                        </option>
+                    `).join("");
+        }
+
+        async function loadProducts() {
+            const response = await apiFetch("/api/products");
+
+            if (!response.ok)
+                throw new Error("無法載入產品資料。");
+
+            products = await response.json();
+        }
+
+        async function loadOrders() {
+            const response = await apiFetch("/api/purchaseorders");
+
+            if (!response.ok)
+                throw new Error("無法載入採購單資料。");
+
+            orders = await response.json();
+
+            const table = document.getElementById("orderTable");
+
+            if (orders.length === 0) {
+                table.innerHTML = `
+                        <tr>
+                            <td colspan="7"
+                                class="text-center text-muted py-4">
+                                目前沒有採購單資料
+                            </td>
+                        </tr>`;
+                return;
+            }
+
+            table.innerHTML = orders.map(o => {
+                const statusLabels = {
+                    Pending: "待處理",
+                    Approved: "已核准",
+                    Cancelled: "已取消"
+                };
+
+                const statusClasses = {
+                    Pending: "bg-warning text-dark",
+                    Approved: "bg-success",
+                    Cancelled: "bg-secondary"
+                };
+
+                return `
+                        <tr>
+                            <td>${o.id}</td>
+                            <td>${new Date(o.orderDate).toLocaleDateString("zh-TW")}</td>
+                            <td>${escapeHtml(o.supplierName)}</td>
+                            <td>
+                                <span class="badge ${statusClasses[o.status] || "bg-secondary"}">
+                                    ${statusLabels[o.status] || escapeHtml(o.status)}
+                                </span>
+                            </td>
+                            <td>${o.itemCount}</td>
+                            <td>${formatMoney(o.totalAmount)}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        onclick="editOrder(${o.id})">
+                                    編輯
+                                </button>
+
+                                ${isAdmin ? `
+                                <button class="btn btn-sm btn-outline-danger"
+                                        onclick="deleteOrder(${o.id})">
+                                    刪除
+                                </button>` : ""}
+                            </td>
+                        </tr>
+                    `;
+            }).join("");
+        }
+
+        function getAvailableProducts() {
+            const supplierId = Number(
+                document.getElementById("supplierId").value);
+
+            return products.filter(p =>
+                p.supplierId === supplierId);
+        }
+
+        function buildProductOptions(selectedId = 0) {
+            const available = getAvailableProducts();
+
+            return `
+                    <option value="">請選擇產品</option>
+                    ${available.map(p => `
+                        <option value="${p.id}"
+                            ${p.id === Number(selectedId) ? "selected" : ""}>
+                            ${escapeHtml(p.name)}
+                        </option>
+                    `).join("")}
+                `;
+        }
+
+        function addItemRow(item = null) {
+            const rowId = nextRowId++;
+            const tbody = document.getElementById("itemTable");
+
+            const tr = document.createElement("tr");
+            tr.dataset.rowId = rowId;
+
+            tr.innerHTML = `
+                    <td>
+                        <select class="form-select product-select"
+                                required>
+                            ${buildProductOptions(item?.productId)}
+                        </select>
+                    </td>
+
+                    <td>
+                        <input type="number"
+                               class="form-control quantity-input"
+                               min="1"
+                               max="2147483647"
+                               step="1"
+                               value="${item?.quantity ?? 1}"
+                               required />
+                    </td>
+
+                    <td>
+                        <input type="number"
+                               class="form-control price-input"
+                               min="0"
+                               max="9999999999999999.99"
+                               step="0.01"
+                               value="${item?.unitPrice ?? 0}"
+                               required />
+                    </td>
+
+                    <td class="subtotal text-end">0.00</td>
+
+                    <td>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger remove-item">
+                            移除
+                        </button>
+                    </td>
+                `;
+
+            tbody.appendChild(tr);
+
+            tr.querySelector(".product-select")
+                .addEventListener("change", calculateTotal);
+
+            tr.querySelector(".quantity-input")
+                .addEventListener("input", calculateTotal);
+
+            tr.querySelector(".price-input")
+                .addEventListener("input", calculateTotal);
+
+            tr.querySelector(".remove-item")
+                .addEventListener("click", () => {
+                    tr.remove();
+                    calculateTotal();
+                });
+
+            calculateTotal();
+        }
+
+        function calculateTotal() {
+            let total = 0;
+
+            document.querySelectorAll("#itemTable tr").forEach(row => {
+                const quantity = Number(
+                    row.querySelector(".quantity-input").value);
+
+                const price = Number(
+                    row.querySelector(".price-input").value);
+
+                const subtotal = quantity * price;
+
+                row.querySelector(".subtotal").textContent =
+                    formatMoney(subtotal);
+
+                total += subtotal;
+            });
+
+            document.getElementById("totalAmount").textContent =
+                formatMoney(total);
+        }
+
+        function onSupplierChanged() {
+            document.querySelectorAll(".product-select")
+                .forEach(select => {
+                    select.innerHTML = buildProductOptions();
+                });
+
+            calculateTotal();
+        }
+
+        function openCreateModal() {
+            document.getElementById("orderForm").reset();
+            document.getElementById("orderId").value = "";
+            document.getElementById("itemTable").innerHTML = "";
+            document.getElementById("modalTitle").textContent =
+                "新增採購單";
+            document.getElementById("modalError").textContent = "";
+
+            document.getElementById("status").value = "Pending";
+
+            addItemRow();
+            modal.show();
+        }
+
+        async function editOrder(id) {
+            try {
+                const response = await apiFetch(
+                    `/api/purchaseorders/${id}`);
+
+                if (!response.ok)
+                    throw new Error("無法載入採購單明細。");
+
+                const order = await response.json();
+
+                document.getElementById("orderId").value = order.id;
+                document.getElementById("supplierId").value =
+                    order.supplierId;
+                document.getElementById("status").value = order.status;
+
+                document.getElementById("itemTable").innerHTML = "";
+                document.getElementById("modalTitle").textContent =
+                    "修改採購單";
+                document.getElementById("modalError").textContent = "";
+
+                order.items.forEach(item => addItemRow(item));
+
+                calculateTotal();
+                modal.show();
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        async function saveOrder() {
+            const form = document.getElementById("orderForm");
+
+            if (!form.reportValidity())
+                return;
+
+            const rows = [
+                ...document.querySelectorAll("#itemTable tr")
+            ];
+
+            if (rows.length === 0) {
+                document.getElementById("modalError").textContent =
+                    "採購單至少需要一筆明細。";
+                return;
+            }
+
+            const items = rows.map(row => ({
+                productId: Number(
+                    row.querySelector(".product-select").value),
+                quantity: Number(
+                    row.querySelector(".quantity-input").value),
+                unitPrice: Number(
+                    row.querySelector(".price-input").value)
+            }));
+
+            if (items.some(i => !i.productId)) {
+                document.getElementById("modalError").textContent =
+                    "請選擇所有採購明細的產品。";
+                return;
+            }
+
+            const id = document.getElementById("orderId").value;
+
+            const data = {
+                supplierId: Number(
+                    document.getElementById("supplierId").value),
+                status: document.getElementById("status").value,
+                items
+            };
+
+            const saveButton = document.getElementById("saveButton");
+            saveButton.disabled = true;
+
+            try {
+                const response = await apiFetch(
+                    id
+                        ? `/api/purchaseorders/${id}`
+                        : "/api/purchaseorders",
+                    {
+                        method: id ? "PUT" : "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(data)
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(
+                        await getErrorMessage(response));
+                }
+
+                modal.hide();
+                showMessage("採購單已儲存。", "success");
+                await loadOrders();
+
+            } catch (error) {
+                document.getElementById("modalError").textContent =
+                    error.message;
+            } finally {
+                saveButton.disabled = false;
+            }
+        }
+
+        async function deleteOrder(id) {
+            if (!confirm(`確定要刪除採購單 #${id} 嗎？`))
+                return;
+
+            try {
+                const response = await apiFetch(
+                    `/api/purchaseorders/${id}`,
+                    { method: "DELETE" }
+                );
+
+                if (!response.ok)
+                    throw new Error(
+                        await getErrorMessage(response));
+
+                showMessage("採購單已刪除。", "success");
+                await loadOrders();
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function showMessage(message, type) {
+            const element = document.getElementById("message");
+            element.replaceChildren();
+
+            const alert = document.createElement("div");
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            element.appendChild(alert);
+        }
+    </script>
+}

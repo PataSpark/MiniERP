@@ -1,0 +1,241 @@
+﻿@{
+    ViewData["Title"] = "產品分類管理";
+    bool isAdmin = User.IsInRole("Admin");
+}
+
+<meta name="csrf-token" content="@ViewData["CsrfToken"]" />
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>產品分類管理</h2>
+
+    <button class="btn btn-primary" onclick="openCreateModal()">
+        <i class="bi bi-plus-lg"></i> 新增分類
+    </button>
+</div>
+
+<div id="message"></div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>分類名稱</th>
+                        <th>產品數量</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="categoryTable"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 新增／修改分類 Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">
+                    產品分類
+                </h5>
+
+                <button type="button" class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <form id="categoryForm">
+                    <input type="hidden" id="categoryId" />
+
+                    <div class="mb-3">
+                        <label class="form-label">分類名稱</label>
+                        <input id="name"
+                               class="form-control"
+                               maxlength="100"
+                               required />
+                    </div>
+                </form>
+
+                <div id="modalError"
+                     class="text-danger"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary"
+                        data-bs-dismiss="modal">
+                    取消
+                </button>
+
+                <button class="btn btn-primary"
+                        id="saveButton"
+                        onclick="saveCategory()">
+                    儲存
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const isAdmin = @isAdmin.ToString().ToLowerInvariant();
+
+        const modal = new bootstrap.Modal(
+            document.getElementById("categoryModal"));
+
+        let categories = [];
+
+        document.addEventListener("DOMContentLoaded", loadCategories);
+
+        async function loadCategories() {
+            try {
+                const response = await apiFetch("/api/categories");
+
+                if (!response.ok)
+                    throw new Error("無法載入產品分類。");
+
+                categories = await response.json();
+
+                const table = document.getElementById("categoryTable");
+
+                if (categories.length === 0) {
+                    table.innerHTML = `
+                            <tr>
+                                <td colspan="4"
+                                    class="text-center text-muted py-4">
+                                    目前沒有產品分類
+                                </td>
+                            </tr>`;
+                    return;
+                }
+
+                table.innerHTML = categories.map(c => `
+                        <tr>
+                            <td>${c.id}</td>
+                            <td>${escapeHtml(c.name)}</td>
+                            <td>${c.productCount}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary"
+                                        onclick="editCategory(${c.id})">
+                                    編輯
+                                </button>
+
+                                ${isAdmin ? `
+                                <button class="btn btn-sm btn-outline-danger"
+                                        onclick="deleteCategory(${c.id})">
+                                    刪除
+                                </button>` : ""}
+                            </td>
+                        </tr>
+                    `).join("");
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function openCreateModal() {
+            document.getElementById("categoryForm").reset();
+            document.getElementById("categoryId").value = "";
+            document.getElementById("modalTitle").textContent = "新增分類";
+            document.getElementById("modalError").textContent = "";
+
+            modal.show();
+        }
+
+        function editCategory(id) {
+            const category = categories.find(c => c.id === id);
+
+            if (!category) return;
+
+            document.getElementById("categoryId").value = category.id;
+            document.getElementById("name").value = category.name;
+            document.getElementById("modalTitle").textContent = "修改分類";
+            document.getElementById("modalError").textContent = "";
+
+            modal.show();
+        }
+
+        async function saveCategory() {
+            const form = document.getElementById("categoryForm");
+
+            if (!form.reportValidity())
+                return;
+
+            const id = document.getElementById("categoryId").value;
+            const name = document.getElementById("name").value.trim();
+
+            if (!name) {
+                document.getElementById("modalError").textContent =
+                    "請輸入分類名稱。";
+                return;
+            }
+
+            const saveButton = document.getElementById("saveButton");
+            saveButton.disabled = true;
+
+            try {
+                const response = await apiFetch(
+                    id ? `/api/categories/${id}` : "/api/categories",
+                    {
+                        method: id ? "PUT" : "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({ name })
+                    }
+                );
+
+                if (!response.ok)
+                    throw new Error(await getErrorMessage(response));
+
+                modal.hide();
+
+                showMessage("分類資料已儲存。", "success");
+                await loadCategories();
+
+            } catch (error) {
+                document.getElementById("modalError").textContent =
+                    error.message;
+            } finally {
+                saveButton.disabled = false;
+            }
+        }
+
+        async function deleteCategory(id) {
+            if (!confirm("確定要刪除此分類嗎？"))
+                return;
+
+            try {
+                const response = await apiFetch(
+                    `/api/categories/${id}`,
+                    { method: "DELETE" }
+                );
+
+                if (!response.ok)
+                    throw new Error(await getErrorMessage(response));
+
+                showMessage("分類已刪除。", "success");
+                await loadCategories();
+
+            } catch (error) {
+                showMessage(error.message, "danger");
+            }
+        }
+
+        function showMessage(message, type) {
+            const element = document.getElementById("message");
+            element.replaceChildren();
+
+            const alert = document.createElement("div");
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            element.appendChild(alert);
+        }
+    </script>
+}

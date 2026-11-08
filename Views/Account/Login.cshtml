@@ -1,0 +1,56 @@
+﻿@model LoginDto
+
+@{
+    ViewData["Title"] = "登入";
+}
+
+<div class="login-container">
+    <div class="card shadow-sm p-4">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">MiniERP</h2>
+            <p class="text-muted">企業資源管理系統</p>
+        </div>
+
+        <form asp-action="Login"
+              asp-route-returnUrl="@ViewData["ReturnUrl"]"
+              method="post">
+
+            @Html.AntiForgeryToken()
+
+            <div asp-validation-summary="ModelOnly"
+                 class="text-danger mb-3"></div>
+
+            <div class="mb-3">
+                <label asp-for="Email" class="form-label">
+                    電子郵件
+                </label>
+
+                <input asp-for="Email"
+                       class="form-control"
+                       autocomplete="username" />
+
+                <span asp-validation-for="Email"
+                      class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Password" class="form-label">
+                    密碼
+                </label>
+
+                <input asp-for="Password"
+                       type="password"
+                       class="form-control"
+                       autocomplete="current-password" />
+
+                <span asp-validation-for="Password"
+                      class="text-danger"></span>
+            </div>
+
+            <button type="submit"
+                    class="btn btn-primary w-100">
+                登入系統
+            </button>
+        </form>
+    </div>
+</div>

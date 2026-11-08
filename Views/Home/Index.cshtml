@@ -1,0 +1,247 @@
+﻿@{
+    ViewData["Title"] = "系統儀表板";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>系統儀表板</h2>
+
+    <button class="btn btn-outline-primary" onclick="loadDashboard()">
+        <i class="bi bi-arrow-clockwise"></i> 重新整理
+    </button>
+</div>
+
+<div id="dashboardError"></div>
+
+<!-- 統計卡片 -->
+<div class="row g-4 mb-4">
+
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm p-4">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <p class="text-muted mb-2">產品總數</p>
+                    <h3 id="productCount">--</h3>
+                </div>
+                <i class="bi bi-box fs-1 text-primary"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm p-4">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <p class="text-muted mb-2">供應商總數</p>
+                    <h3 id="supplierCount">--</h3>
+                </div>
+                <i class="bi bi-truck fs-1 text-success"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm p-4">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <p class="text-muted mb-2">採購單總數</p>
+                    <h3 id="orderCount">--</h3>
+                </div>
+                <i class="bi bi-receipt fs-1 text-warning"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="card shadow-sm p-4">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <p class="text-muted mb-2">採購總金額</p>
+                    <h3 id="totalPurchaseAmount">--</h3>
+                </div>
+                <i class="bi bi-cash-stack fs-1 text-danger"></i>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- 統計圖表 -->
+<div class="row g-4">
+
+    <div class="col-lg-5">
+        <div class="card shadow-sm p-4 h-100">
+            <h5 class="mb-4">採購單狀態分布</h5>
+            <div style="position:relative; height:320px;">
+                <canvas id="statusChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card shadow-sm p-4 h-100">
+            <h5 class="mb-4">各供應商採購金額</h5>
+            <div style="position:relative; height:320px;">
+                <canvas id="supplierChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@section Scripts {
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js">
+    </script>
+
+    <script>
+        let statusChart = null;
+        let supplierChart = null;
+
+        document.addEventListener("DOMContentLoaded", loadDashboard);
+
+        function formatNumber(value) {
+            return Number(value).toLocaleString("zh-TW");
+        }
+
+        function formatMoney(value) {
+            return Number(value).toLocaleString("zh-TW", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+
+        async function loadDashboard() {
+            const errorElement = document.getElementById("dashboardError");
+            errorElement.replaceChildren();
+
+            try {
+                const response = await fetch("/api/dashboard/summary", {
+                    credentials: "same-origin"
+                });
+
+                if (response.status === 401) {
+                    window.location.href = "/Account/Login";
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error("無法載入儀表板資料。");
+                }
+
+                const data = await response.json();
+
+                // 更新統計卡片
+                document.getElementById("productCount").textContent =
+                    formatNumber(data.productCount);
+
+                document.getElementById("supplierCount").textContent =
+                    formatNumber(data.supplierCount);
+
+                document.getElementById("orderCount").textContent =
+                    formatNumber(data.orderCount);
+
+                document.getElementById("totalPurchaseAmount").textContent =
+                    formatMoney(data.totalPurchaseAmount);
+
+                renderStatusChart(data.orderStatus);
+                renderSupplierChart(data.supplierAmounts);
+
+            } catch (error) {
+                const alert = document.createElement("div");
+                alert.className = "alert alert-danger";
+                alert.textContent = error.message;
+                errorElement.appendChild(alert);
+            }
+        }
+
+        function renderStatusChart(orderStatus) {
+            const labels = {
+                Pending: "待處理",
+                Approved: "已核准",
+                Cancelled: "已取消"
+            };
+
+            const colors = {
+                Pending: "#f59e0b",
+                Approved: "#22c55e",
+                Cancelled: "#94a3b8"
+            };
+
+            if (statusChart) {
+                statusChart.destroy();
+            }
+
+            statusChart = new Chart(
+                document.getElementById("statusChart"),
+                {
+                    type: "doughnut",
+                    data: {
+                        labels: orderStatus.map(
+                            x => labels[x.status] ?? x.status
+                        ),
+                        datasets: [{
+                            data: orderStatus.map(x => x.count),
+                            backgroundColor: orderStatus.map(
+                                x => colors[x.status] ?? "#64748b"
+                            ),
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: "bottom"
+                            }
+                        }
+                    }
+                }
+            );
+        }
+
+        function renderSupplierChart(supplierAmounts) {
+            if (supplierChart) {
+                supplierChart.destroy();
+            }
+
+            supplierChart = new Chart(
+                document.getElementById("supplierChart"),
+                {
+                    type: "bar",
+                    data: {
+                        labels: supplierAmounts.map(
+                            x => x.supplierName
+                        ),
+                        datasets: [{
+                            label: "採購金額",
+                            data: supplierAmounts.map(
+                                x => x.totalAmount
+                            ),
+                            backgroundColor: "#3b82f6",
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: value =>
+                                        Number(value).toLocaleString("zh-TW")
+                                }
+                            }
+                        }
+                    }
+                }
+            );
+        }
+    </script>
+}

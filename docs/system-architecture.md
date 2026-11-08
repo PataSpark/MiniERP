@@ -1,3 +1,6 @@
+# MiniERP 系統架構圖
+
+```mermaid
 flowchart TD
     A["使用者瀏覽器"] --> B["Razor Views / Bootstrap / JavaScript"]
     B --> C["ASP.NET Core MVC Controllers"]
@@ -9,3 +12,4 @@ flowchart TD
     E --> G
     G --> H[("Microsoft SQL Server")]
     D --> I["全域例外處理"]
+```

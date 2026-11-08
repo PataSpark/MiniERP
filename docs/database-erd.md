@@ -1,3 +1,6 @@
+# MiniERP 資料庫 ERD
+
+```mermaid
 erDiagram
     CATEGORIES ||--o{ PRODUCTS : contains
     SUPPLIERS ||--o{ PRODUCTS : supplies
@@ -42,3 +45,4 @@ erDiagram
         int Quantity
         decimal UnitPrice
     }
+```

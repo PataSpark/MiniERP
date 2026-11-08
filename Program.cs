@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using MiniERP.Data;
 using MiniERP.Models;
@@ -33,10 +34,34 @@ builder.Services
 
 builder.Services.AddOpenApi();
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString(
-            "DefaultConnection")));
+
+var databaseProvider =
+    builder.Configuration["DatabaseProvider"] ?? "SqlServer";
+
+var connectionString =
+    builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException(
+        "找不到 DefaultConnection 連線字串。");
+
+switch (databaseProvider)
+{
+    case "SqlServer":
+        builder.Services.AddDbContext<ApplicationDbContext>(options =>
+            options.UseSqlServer(connectionString));
+        break;
+
+    case "PostgreSQL":
+        builder.Services.AddDbContext<
+            ApplicationDbContext,
+            PostgreSqlApplicationDbContext>(
+            options => options.UseNpgsql(connectionString));
+        break;
+
+    default:
+        throw new InvalidOperationException(
+            $"不支援的資料庫 Provider：{databaseProvider}");
+}
+
 
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>
@@ -130,6 +155,25 @@ builder.Services.AddAntiforgery(options =>
 builder.Services.AddExceptionHandler<MiniERP.Middleware.GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto;
+
+    // Render 的代理 IP 可能變動。
+    // 僅在 Render Production 環境使用此設定。
+    if (builder.Environment.IsProduction() &&
+        builder.Configuration["RENDER"] == "true")
+    {
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+
+        options.ForwardLimit = 1;
+    }
+});
+
+
 var app = builder.Build();
 
 // 初始化角色與管理員
@@ -140,19 +184,23 @@ using (var scope = app.Services.CreateScope())
         app.Configuration);
 }
 
+// Render 的反向代理資訊應在 HTTPS 相關 Middleware 前處理
+app.UseForwardedHeaders();
+
+// 統一使用 GlobalExceptionHandler
+app.UseExceptionHandler();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 else
 {
-    app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
 
-app.UseExceptionHandler();
-
 app.UseHttpsRedirection();
+
 app.UseStaticFiles();
 
 app.UseRouting();

@@ -1,8 +1,16 @@
 # MiniERP — 企業資源管理系統練習專案
 
-MiniERP 是使用 ASP.NET Core 10、Entity Framework Core 與 Microsoft SQL Server 開發的 ERP 練習專案。
+MiniERP 是使用 ASP.NET Core 10 與 Entity Framework Core 10 開發的 ERP 練習專案，支援 Microsoft SQL Server 與 PostgreSQL，並透過 Docker 部署於 Render。
 
 本專案以中小型企業的產品、供應商及採購管理為情境，實作資料管理、採購單作業、使用者權限控管及統計儀表板，練習從資料庫設計、後端 API 到前端管理介面的完整開發流程。
+
+## 線上展示
+
+**[開啟 MiniERP 線上 Demo](https://minierp-demo.onrender.com/)**
+
+網站部署於 Render，資料庫使用 Neon PostgreSQL。Render 免費服務在閒置後可能休眠，因此首次開啟可能需要等待一段時間。
+
+線上展示需要登入；展示帳號可另行提供，管理員帳號密碼不公開於 Repository。
 
 ## 技術架構
 
@@ -12,7 +20,10 @@ MiniERP 是使用 ASP.NET Core 10、Entity Framework Core 與 Microsoft SQL Serv
 | 後端框架 | ASP.NET Core 10 |
 | 網頁架構 | ASP.NET Core MVC、RESTful API |
 | ORM | Entity Framework Core 10 |
-| 資料庫 | Microsoft SQL Server |
+| 資料庫 | Microsoft SQL Server Express（本機）、PostgreSQL（雲端） |
+| PostgreSQL Provider | Npgsql.EntityFrameworkCore.PostgreSQL |
+| 容器化與部署 | Docker、Render |
+| 雲端資料庫服務 | Neon |
 | 身分驗證 | ASP.NET Core Identity、Cookie Authentication |
 | 前端介面 | Razor Views、Bootstrap 5 |
 | 統計圖表 | Chart.js |
@@ -89,9 +100,11 @@ MiniERP 是使用 ASP.NET Core 10、Entity Framework Core 與 Microsoft SQL Serv
 
 主要資料流程：
 
-使用者瀏覽器 → Razor Views / JavaScript → ASP.NET Core API Controllers → Entity Framework Core → SQL Server
+使用者瀏覽器 → Razor Views / JavaScript → ASP.NET Core MVC / API Controllers → Entity Framework Core → SQL Server（本機）或 PostgreSQL（雲端）
 
 後端使用 DTO 進行輸入資料驗證，並透過 Identity 管理身分驗證與角色授權。
+
+本機開發使用 SQL Server Express；線上展示則由 Render 執行 Docker 容器，連線至 Neon PostgreSQL。資料庫 Provider 與連線字串由應用程式設定及環境變數決定，並分別維護 EF Core Migration。正式環境的連線資訊與管理員初始化密碼透過環境變數設定，不提交至 GitHub。
 
 ### 系統架構圖
 
@@ -127,7 +140,7 @@ MiniERP 是使用 ASP.NET Core 10、Entity Framework Core 與 Microsoft SQL Serv
 - Admin / Staff 角色授權
 - Anti-forgery Token
 - DTO 資料驗證
-- SQL Server 外鍵與唯一索引
+- 關聯式資料庫外鍵與唯一索引（SQL Server / PostgreSQL）
 - EF Core Transaction
 - 全域 API 例外處理
 - 避免向使用者顯示資料庫內部錯誤細節
@@ -136,7 +149,7 @@ MiniERP 是使用 ASP.NET Core 10、Entity Framework Core 與 Microsoft SQL Serv
 
 MiniERP 是用於學習與展示的作品集專案，並非正式商用 ERP 系統。
 
-目前著重於基本資料管理、採購作業、身分驗證、權限控管及資料庫操作，尚未實作完整的庫存異動流程、採購核准工作流、ERP 外部系統整合及正式環境部署。
+目前已完成基本資料管理、採購作業、身分驗證、權限控管、資料庫操作，以及使用 Docker、Render 與 Neon PostgreSQL 的線上展示部署。尚未實作完整的庫存異動流程、採購核准工作流及 ERP 外部系統整合；線上展示部署不等同於具備完整商用維運能力。
 
 ## 後續可擴充方向
 
@@ -146,5 +159,4 @@ MiniERP 是用於學習與展示的作品集專案，並非正式商用 ERP 系�
 - 採購及庫存報表
 - API 分頁、排序與搜尋
 - 自動化測試
-- Docker 部署
 - ERP 系統資料交換與整合

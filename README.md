@@ -1,6 +1,6 @@
-# MiniERP — 企業資源管理系統練習專案
+# MiniERP — 企業資源管理系統專案
 
-MiniERP 是使用 ASP.NET Core 10 與 Entity Framework Core 10 開發的 ERP 練習專案，支援 Microsoft SQL Server 與 PostgreSQL，並透過 Docker 部署於 Render。
+MiniERP 是使用 ASP.NET Core 10 與 Entity Framework Core 10 開發的 ERP 專案，支援 Microsoft SQL Server 與 PostgreSQL，並透過 Docker 部署於 Render。
 
 本專案以中小型企業的產品、供應商及採購管理為情境，實作資料管理、採購單作業、使用者權限控管及統計儀表板，練習從資料庫設計、後端 API 到前端管理介面的完整開發流程。
 
